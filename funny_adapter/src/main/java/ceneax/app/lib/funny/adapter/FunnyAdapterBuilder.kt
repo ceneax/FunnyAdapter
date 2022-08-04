@@ -44,11 +44,11 @@ class ItemProviderBuilder<ITEM : Any, VIEW_BINDING : ViewBinding>(
     private val coroutineScope: CoroutineScope,
     private val bindingFactory: (LayoutInflater, ViewGroup, Boolean) -> VIEW_BINDING
 ) {
-    private var initFunction: VIEW_BINDING.() -> Unit = {}
+    private var initFunction: VIEW_BINDING.(FunnyAdapter.BindingHolder) -> Unit = {}
     private var bindFunction: suspend VIEW_BINDING.(CoroutineScope, holder: FunnyAdapter.BindingHolder, ITEM) -> Unit = { _, _, _ -> }
     private val diffUtilItemCallbackBuilder = DiffUtilItemCallbackBuilder<ITEM>()
 
-    fun init(function: VIEW_BINDING.() -> Unit) {
+    fun init(function: VIEW_BINDING.(FunnyAdapter.BindingHolder) -> Unit) {
         initFunction = function
     }
 
@@ -66,7 +66,7 @@ class ItemProviderBuilder<ITEM : Any, VIEW_BINDING : ViewBinding>(
                 private var bindJob: kotlinx.coroutines.Job? = null
 
                 init {
-                    (binding as VIEW_BINDING).initFunction()
+                    (binding as VIEW_BINDING).initFunction(this)
                 }
 
                 override fun bind(item: Any) {
