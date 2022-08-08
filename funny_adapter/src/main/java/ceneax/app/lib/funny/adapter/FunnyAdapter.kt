@@ -39,7 +39,7 @@ class FunnyAdapter : RecyclerView.Adapter<FunnyAdapter.BindingHolder>() {
     private fun getItemViewType(item: Any) = viewTypes.getOrPut(item::class) { calculateItemViewType(item) }
 
     private fun calculateItemViewType(item: Any) =
-        (listOf(item::class) + item::class.allSuperclasses)
+        (listOf(item::class) /** + item::class.allSuperclasses */)
             .firstOrNull { itemConfigs.containsKey(it.hashCode()) }
             ?.hashCode()
             ?: error("View type not found for ${item::class.simpleName}")
