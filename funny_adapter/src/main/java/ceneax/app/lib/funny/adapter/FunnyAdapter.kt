@@ -1,60 +1,48 @@
 package ceneax.app.lib.funny.adapter
 
+import android.util.SparseArray
 import android.view.LayoutInflater
 import android.view.ViewGroup
 import androidx.recyclerview.widget.DiffUtil
 import androidx.recyclerview.widget.RecyclerView
 import androidx.viewbinding.ViewBinding
 import kotlin.reflect.KClass
-import kotlin.reflect.full.allSuperclasses
-
-private typealias ViewType = Int
 
 class FunnyAdapter : RecyclerView.Adapter<FunnyAdapter.BindingHolder>() {
-    private val itemConfigs = mutableMapOf<ViewType, ItemConfig>()
-    private val viewTypes = mutableMapOf<KClass<*>, ViewType>()
-    private var items = emptyList<Any>()
+    private var mListItem = emptyList<Any>()
+    private val mMapItemConfig = SparseArray<ItemConfig>()
 
     override fun onCreateViewHolder(
         parent: ViewGroup,
         viewType: Int
-    ) = getItemConfig(viewType).bindingHolderFactory(
-        LayoutInflater.from(parent.context),
-        parent,
-        false
+    ): BindingHolder = getItemConfig(viewType).bindingHolderFactory(
+        LayoutInflater.from(parent.context), parent, false
     )
 
     override fun onBindViewHolder(
         holder: BindingHolder,
         position: Int
-    ) = holder.bind(items[position])
+    ) = holder.bind(mListItem[position])
 
     override fun onViewRecycled(holder: BindingHolder) = holder.recycle()
 
-    override fun getItemCount() = items.size
+    override fun getItemCount(): Int = mListItem.size
 
-    override fun getItemViewType(position: Int) =
-        getItemViewType(items[position])
+    override fun getItemViewType(position: Int): Int = getItemViewType(mListItem[position])
 
-    private fun getItemViewType(item: Any) = viewTypes.getOrPut(item::class) { calculateItemViewType(item) }
+    private fun getItemViewType(item: Any) = item::class.hashCode()
 
-    private fun calculateItemViewType(item: Any) =
-        (listOf(item::class) + item::class.allSuperclasses)
-            .firstOrNull { itemConfigs.containsKey(it.hashCode()) }
-            ?.hashCode()
-            ?: error("View type not found for ${item::class.simpleName}")
-
-    private fun getItemConfig(viewType: Int) = checkNotNull(itemConfigs[viewType])
+    private fun getItemConfig(viewType: Int) = mMapItemConfig[viewType]
 
     private fun getItemConfig(item: Any) = getItemConfig(getItemViewType(item))
 
-    fun addItemConfig(itemClass: KClass<*>, itemConfig: ItemConfig) {
-        itemConfigs[itemClass.hashCode()] = itemConfig
+    fun <I : Any> addItemConfig(itemClass: KClass<I>, itemConfig: ItemConfig) {
+        mMapItemConfig[itemClass.hashCode()] = itemConfig
     }
 
-    fun loadItems(newItems: List<Any>) {
-        val diffResult = DiffUtil.calculateDiff(DiffCallback(items, newItems))
-        items = newItems
+    fun updateList(newList: List<Any>) {
+        val diffResult = DiffUtil.calculateDiff(DiffCallback(mListItem, newList))
+        mListItem = newList
         diffResult.dispatchUpdatesTo(this)
     }
 
@@ -69,36 +57,35 @@ class FunnyAdapter : RecyclerView.Adapter<FunnyAdapter.BindingHolder>() {
     }
 
     private inner class DiffCallback(
-        private val oldItems: List<Any>,
-        private val newItems: List<Any>
+        private val oldList: List<Any>,
+        private val newList: List<Any>
     ) : DiffUtil.Callback() {
-
         override fun areItemsTheSame(
             oldItemPosition: Int,
             newItemPosition: Int
-        ) = getItemConfig(newItems[newItemPosition]).diffUtilItemCallback.areItemsTheSame(
-            oldItems[oldItemPosition],
-            newItems[newItemPosition]
+        ) = getItemConfig(newList[newItemPosition]).diffUtilItemCallback.areItemsTheSame(
+            oldList[oldItemPosition],
+            newList[newItemPosition]
         )
 
         override fun areContentsTheSame(
             oldItemPosition: Int,
             newItemPosition: Int
-        ) = getItemConfig(newItems[newItemPosition]).diffUtilItemCallback.areContentsTheSame(
-            oldItems[oldItemPosition],
-            newItems[newItemPosition]
+        ) = getItemConfig(newList[newItemPosition]).diffUtilItemCallback.areContentsTheSame(
+            oldList[oldItemPosition],
+            newList[newItemPosition]
         )
 
         override fun getChangePayload(
             oldItemPosition: Int,
             newItemPosition: Int
-        ) = getItemConfig(newItems[newItemPosition]).diffUtilItemCallback.getChangePayload(
-            oldItems[oldItemPosition],
-            newItems[newItemPosition]
+        ) = getItemConfig(newList[newItemPosition]).diffUtilItemCallback.getChangePayload(
+            oldList[oldItemPosition],
+            newList[newItemPosition]
         )
 
-        override fun getOldListSize() = oldItems.size
+        override fun getOldListSize() = oldList.size
 
-        override fun getNewListSize() = newItems.size
+        override fun getNewListSize() = newList.size
     }
 }

@@ -1,124 +1,77 @@
-@file:Suppress("UNCHECKED_CAST")
-
 package ceneax.app.lib.funny.adapter
 
 import android.view.LayoutInflater
 import android.view.ViewGroup
 import androidx.lifecycle.LifecycleOwner
 import androidx.lifecycle.lifecycleScope
-import androidx.recyclerview.widget.DiffUtil
+import androidx.recyclerview.widget.LinearLayoutManager
 import androidx.recyclerview.widget.RecyclerView
 import androidx.viewbinding.ViewBinding
-import androidx.viewpager2.widget.ViewPager2
 import kotlinx.coroutines.CoroutineScope
-import kotlinx.coroutines.launch
 
-fun RecyclerView.requireFunnyAdapter() = adapter as FunnyAdapter
+val RecyclerView.funnyAdapter get() = adapter as FunnyAdapter
 
-fun ViewPager2.requireFunnyAdapter() = adapter as FunnyAdapter
+inline fun <reified I : Any, reified VB : ViewBinding> RecyclerView.FunnyAdapter(
+    nestedScrollingEnabled: Boolean = true,
+    layoutManager: RecyclerView.LayoutManager? = null,
+    builder: ItemProviderBuilder<I, VB>.() -> Unit
+) = FunnyAdapter(nestedScrollingEnabled, layoutManager) {
+    add(builder)
+}
 
-fun LifecycleOwner.FunnyAdapter(
-    setup: FunnyAdapterBuilder.() -> Unit
-) = FunnyAdapter(lifecycleScope, setup)
+@JvmName("FunnyAdapterRecyclerView")
+inline fun RecyclerView.FunnyAdapter(
+    nestedScrollingEnabled: Boolean = true,
+    layoutManager: RecyclerView.LayoutManager? = null,
+    builder: FunnyAdapterBuilder.() -> Unit
+): FunnyAdapter {
+    isNestedScrollingEnabled = nestedScrollingEnabled
+    if (this.layoutManager == null && layoutManager == null) {
+        this.layoutManager = LinearLayoutManager(context)
+    } else if (this.layoutManager == null) {
+        this.layoutManager = layoutManager
+    }
+    adapter = (this.context as LifecycleOwner).FunnyAdapter(builder)
+    return funnyAdapter
+}
 
-fun FunnyAdapter(
-    coroutineScope: CoroutineScope,
-    setup: FunnyAdapterBuilder.() -> Unit
-) = FunnyAdapterBuilder(coroutineScope).apply(setup).build()
+@JvmName("FunnyAdapterSingle")
+inline fun <reified I : Any, reified VB : ViewBinding> LifecycleOwner.FunnyAdapter(
+    builder: ItemProviderBuilder<I, VB>.() -> Unit
+) = FunnyAdapter(lifecycleScope, builder)
 
-class FunnyAdapterBuilder(val coroutineScope: CoroutineScope) {
+@JvmName("FunnyAdapterSingle")
+inline fun <reified I : Any, reified VB : ViewBinding> FunnyAdapter(
+    scope: CoroutineScope,
+    builder: ItemProviderBuilder<I, VB>.() -> Unit
+) = FunnyAdapter(scope) {
+    add(builder)
+}
+
+inline fun LifecycleOwner.FunnyAdapter(
+    builder: FunnyAdapterBuilder.() -> Unit
+) = FunnyAdapter(lifecycleScope, builder)
+
+inline fun FunnyAdapter(
+    scope: CoroutineScope,
+    builder: FunnyAdapterBuilder.() -> Unit
+) = FunnyAdapterBuilder(scope).apply(builder).build()
+
+class FunnyAdapterBuilder(val scope: CoroutineScope) {
     val adapter = FunnyAdapter()
 
-    inline fun <reified ITEM : Any, VIEW_BINDING : ViewBinding> setup(
-        noinline bindingFactory: (LayoutInflater, ViewGroup, Boolean) -> VIEW_BINDING,
-        setup: ItemProviderBuilder<ITEM, VIEW_BINDING>.() -> Unit = {}
-    ) = adapter.addItemConfig(
-        ITEM::class,
-        ItemProviderBuilder<ITEM, VIEW_BINDING>(coroutineScope, bindingFactory).apply(setup).build()
-    )
-
     fun build() = adapter
-}
 
-class ItemProviderBuilder<ITEM : Any, VIEW_BINDING : ViewBinding>(
-    private val coroutineScope: CoroutineScope,
-    private val bindingFactory: (LayoutInflater, ViewGroup, Boolean) -> VIEW_BINDING
-) {
-    private var initFunction: VIEW_BINDING.(FunnyAdapter.BindingHolder) -> Unit = {}
-    private var bindFunction: suspend VIEW_BINDING.(CoroutineScope, holder: FunnyAdapter.BindingHolder, ITEM) -> Unit = { _, _, _ -> }
-    private val diffUtilItemCallbackBuilder = DiffUtilItemCallbackBuilder<ITEM>()
-
-    fun init(function: VIEW_BINDING.(FunnyAdapter.BindingHolder) -> Unit) {
-        initFunction = function
+    inline fun <reified I : Any, reified VB : ViewBinding> add(
+        block: ItemProviderBuilder<I, VB>.() -> Unit
+    ) {
+        val inflateMethod = VB::class.java.getDeclaredMethod(
+            "inflate",
+            LayoutInflater::class.java, ViewGroup::class.java, Boolean::class.java
+        )
+        return adapter.addItemConfig(
+            I::class,
+            ItemProviderBuilder<I, VB>(scope, inflateMethod).apply(block).build()
+        )
     }
-
-    fun bind(function: suspend VIEW_BINDING.(CoroutineScope, FunnyAdapter.BindingHolder, ITEM) -> Unit) {
-        bindFunction = function
-    }
-
-    fun diffUtil(setup: DiffUtilItemCallbackBuilder<ITEM>.() -> Unit) {
-        diffUtilItemCallbackBuilder.setup()
-    }
-
-    fun build() = object : FunnyAdapter.ItemConfig(
-        bindingHolderFactory = { layoutInflater, container, attachToToot ->
-            object : FunnyAdapter.BindingHolder(bindingFactory(layoutInflater, container, attachToToot)) {
-                private var bindJob: kotlinx.coroutines.Job? = null
-
-                init {
-                    (binding as VIEW_BINDING).initFunction(this)
-                }
-
-                override fun bind(item: Any) {
-                    val holder = this
-                    bindJob = coroutineScope.launch {
-                        (binding as VIEW_BINDING).bindFunction(
-                            this,
-                            holder,
-                            item as ITEM
-                        )
-                    }
-                }
-
-                override fun recycle() {
-                    bindJob?.cancel()
-                    bindJob = null
-                }
-            }
-        },
-        diffUtilItemCallback = diffUtilItemCallbackBuilder.build()
-    ) {}
-}
-
-class DiffUtilItemCallbackBuilder<ITEM : Any> {
-    private var areItemsTheSameFunction: (oldItem: Any, newItem: Any) -> Boolean = { oldItem, newItem -> oldItem == newItem }
-    private var areContentsTheSameFunction: (oldItem: Any, newItem: Any) -> Boolean = { oldItem, newItem -> oldItem == newItem }
-
-    fun areItemsTheSame(function: (oldItem: ITEM, newItem: ITEM) -> Boolean) {
-        areItemsTheSameFunction = function as (Any, Any) -> Boolean
-    }
-
-    fun areContentsTheSame(function: (oldItem: ITEM, newItem: ITEM) -> Boolean) {
-        areContentsTheSameFunction = function as (Any, Any) -> Boolean
-    }
-
-    fun build() = object : DiffUtil.ItemCallback<Any>() {
-        override fun areItemsTheSame(oldItem: Any, newItem: Any) =
-            oldItem::class == newItem::class && areItemsTheSameFunction(oldItem, newItem)
-
-        override fun areContentsTheSame(oldItem: Any, newItem: Any) =
-            oldItem::class == newItem::class && areContentsTheSameFunction(oldItem, newItem)
-    }
-}
-
-fun <ITEM : Any, VIEW_BINDING : ViewBinding> ItemProviderBuilder<ITEM, VIEW_BINDING>.bind(
-    function: suspend VIEW_BINDING.(FunnyAdapter.BindingHolder, ITEM) -> Unit
-) = bind { _, bindingHolder, item ->
-    function(bindingHolder, item)
-}
-
-fun <ITEM : Any, VIEW_BINDING : ViewBinding> ItemProviderBuilder<ITEM, VIEW_BINDING>.bind(
-    function: suspend VIEW_BINDING.(ITEM) -> Unit
-) = bind { _, _, item ->
-    function(item)
 }
